@@ -182,3 +182,8 @@ h3 { font-size: 0.875rem; color: var(--text-muted); margin: 0 0 0.5rem 0; }
   -moz-appearance: textfield;
 }
 
+#statusText {
+  font-size: 0.85rem;
+  color: var(--text-muted, #6b7280);
+  margin-bottom: 6px;
+}
