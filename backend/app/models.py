@@ -37,7 +37,7 @@ class Video(Base):
     upload_time = Column(DateTime, default=datetime.utcnow)
 
     director = relationship("User", back_populates="videos", foreign_keys=[director_id])
-    sessions = relationship("Session", back_populates="video")
+    sessions = relationship("Session", back_populates="video", cascade="all, delete-orphan")
 
 
 class Session(Base):

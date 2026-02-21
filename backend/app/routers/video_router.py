@@ -92,12 +92,17 @@ def stream_video(
     db: Session = Depends(get_db),
 ):
     from fastapi.responses import FileResponse
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    if not os.path.exists(video.file_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
-    return FileResponse(video.file_path, media_type="video/mp4")
+    try:
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        if not os.path.exists(video.file_path):
+            raise HTTPException(status_code=404, detail="Video file not found")
+        return FileResponse(video.file_path, media_type="video/mp4")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{video_id}")
@@ -106,18 +111,31 @@ def delete_video(
     user: User = Depends(require_director),
     db: Session = Depends(get_db),
 ):
-    video = db.query(Video).filter(Video.id == video_id, Video.director_id == user.id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    # Delete the file from disk
-    if os.path.exists(video.file_path):
+    try:
+        video = db.query(Video).filter(Video.id == video_id, Video.director_id == user.id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        # Delete related sessions first (they will cascade delete emotion_readings and survey_responses)
+        from app.models import Session as SessionModel
+        sessions = db.query(SessionModel).filter(SessionModel.video_id == video_id).all()
+        for session in sessions:
+            db.delete(session)
+        
+        # Delete the file from disk (if it exists)
         try:
-            os.remove(video.file_path)
+            if video.file_path and os.path.exists(video.file_path):
+                os.remove(video.file_path)
         except Exception as e:
-            pass  # Continue even if file deletion fails
-    
-    # Delete from database
-    db.delete(video)
-    db.commit()
-    return {"message": "Video deleted successfully"}
+            # Log but continue - file might already be deleted or path might be invalid
+            pass
+        
+        # Delete from database
+        db.delete(video)
+        db.commit()
+        return {"message": "Video deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete video: {str(e)}")

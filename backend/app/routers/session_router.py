@@ -16,14 +16,19 @@ def create_session(
     user: User = Depends(require_viewer),
     db: Session = Depends(get_db),
 ):
-    video = db.query(Video).filter(Video.id == data.video_id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    session = SessionModel(video_id=data.video_id, viewer_id=user.id)
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    return session
+    try:
+        video = db.query(Video).filter(Video.id == data.video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        session = SessionModel(video_id=data.video_id, viewer_id=user.id)
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        return session
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
