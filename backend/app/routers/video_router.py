@@ -98,3 +98,26 @@ def stream_video(
     if not os.path.exists(video.file_path):
         raise HTTPException(status_code=404, detail="Video file not found")
     return FileResponse(video.file_path, media_type="video/mp4")
+
+
+@router.delete("/{video_id}")
+def delete_video(
+    video_id: int,
+    user: User = Depends(require_director),
+    db: Session = Depends(get_db),
+):
+    video = db.query(Video).filter(Video.id == video_id, Video.director_id == user.id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Delete the file from disk
+    if os.path.exists(video.file_path):
+        try:
+            os.remove(video.file_path)
+        except Exception as e:
+            pass  # Continue even if file deletion fails
+    
+    # Delete from database
+    db.delete(video)
+    db.commit()
+    return {"message": "Video deleted successfully"}

@@ -103,13 +103,35 @@ async function loadVideos() {
     const list = await api('/videos');
     const el = document.getElementById('videoList');
     el.innerHTML = list.length ? list.map(v => `
-      <button type="button" class="${v.id === selectedVideoId ? 'active' : ''}" data-id="${v.id}">
-        <div>${v.title || v.filename}</div>
-        <div class="filename">${v.filename}</div>
-      </button>
+      <div class="video-item" data-id="${v.id}">
+        <button type="button" class="${v.id === selectedVideoId ? 'active' : ''}" data-id="${v.id}">
+          <div>${v.title || v.filename}</div>
+          <div class="filename">${v.filename}</div>
+        </button>
+        <button type="button" class="delete-btn" data-id="${v.id}" aria-label="Delete video">🗑️</button>
+      </div>
     `).join('') : '<p style="color:var(--text-muted)">No videos yet</p>';
-    el.querySelectorAll('button').forEach(b => {
+    el.querySelectorAll('.video-item > button:not(.delete-btn)').forEach(b => {
       b.onclick = () => { selectedVideoId = parseInt(b.dataset.id); loadVideos(); loadAnalytics(selectedVideoId); };
+    });
+    el.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const videoId = parseInt(btn.dataset.id, 10);
+        if (confirm('Are you sure you want to delete this video?')) {
+          try {
+            await api('/videos/' + videoId, { method: 'DELETE' });
+            if (selectedVideoId === videoId) {
+              selectedVideoId = null;
+              document.getElementById('analyticsPlaceholder').style.display = 'block';
+              document.getElementById('analyticsContent').style.display = 'none';
+            }
+            loadVideos();
+          } catch (ex) {
+            alert((ex.data?.detail || ex.message) || 'Failed to delete video');
+          }
+        }
+      };
     });
   } catch (e) { console.error(e); }
 }
@@ -125,7 +147,10 @@ async function loadAnalytics(videoId) {
       <div class="stat-box"><div class="label">Alignment</div><div class="value" style="color:var(--accent)">${a.alignment_score ?? 0}%</div></div>
       <div class="stat-box"><div class="label">Volatility</div><div class="value" style="color:#f59e0b">${a.emotional_volatility ?? 0}%</div></div>
       <div class="stat-box"><div class="label">Model vs Survey</div><div class="value" style="color:#22c55e">${a.model_vs_survey_alignment ?? '-'}%</div></div>
-      <div class="stat-box"><a href="#" id="exportPdf">Export PDF</a></div>
+      <div class="stat-box stat-box-download">
+        <div class="label">Download Report</div>
+        <div class="download-symbol" id="exportPdf" aria-label="Download PDF">⬇</div>
+      </div>
     `;
     document.getElementById('exportPdf').onclick = async (e) => {
       e.preventDefault();
@@ -138,6 +163,19 @@ async function loadAnalytics(videoId) {
     document.getElementById('aiSummary').textContent = a.ai_summary || 'No summary available.';
     const curve = a.avg_emotion_curve || [];
     document.getElementById('chartArea').innerHTML = curve.length ? '<p style="color:var(--text-muted)">' + curve.map(c => c.timestamp + 's: ' + c.emotion).join(', ') + '</p>' : '<p style="color:var(--text-muted)">No data</p>';
+    const emotionColors = { happy: '#ec4899', sad: '#3b82f6', angry: '#ef4444', neutral: '#6b7280', surprise: '#eab308', surprised: '#eab308', fear: '#1f2937', disgust: '#166534' };
+    const tubeEl = document.getElementById('emotionTube');
+    if (curve.length) {
+      const total = Math.max(1, curve[curve.length - 1].timestamp - curve[0].timestamp + 1);
+      tubeEl.innerHTML = curve.map((c, i) => {
+        const nextTs = i < curve.length - 1 ? curve[i + 1].timestamp : c.timestamp + 1;
+        const width = ((nextTs - c.timestamp) / total) * 100;
+        const color = emotionColors[c.emotion?.toLowerCase()] || emotionColors.neutral;
+        return `<span class="emotion-tube-segment" style="width:${width}%;background:${color}" title="${c.timestamp}s: ${c.emotion}"></span>`;
+      }).join('');
+    } else {
+      tubeEl.innerHTML = '<p class="emotion-tube-empty">No emotion data yet</p>';
+    }
   } catch (e) { ph.style.display = 'block'; content.style.display = 'none'; ph.textContent = 'Failed to load analytics'; }
 }
 
