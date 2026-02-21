@@ -160,7 +160,8 @@ document.getElementById('videoFile').onchange = async (e) => {
 document.getElementById('watchForm').onsubmit = (e) => {
   e.preventDefault();
   const id = parseInt(document.getElementById('videoId').value, 10);
-  if (id) startWatching(id);
+  if (id && id > 0) startWatching(id);
+  else alert('Please enter a valid positive Video ID');
 };
 
 let currentSessionId = null;

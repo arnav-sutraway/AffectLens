@@ -102,3 +102,37 @@ h3 { font-size: 0.875rem; color: var(--text-muted); margin: 0 0 0.5rem 0; }
 .hint { font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem; }
 
 #intensity { width: 100%; margin-bottom: 1rem; }
+
+/* Style spinner buttons to match accent purple color */
+#videoId::-webkit-inner-spin-button,
+#videoId::-webkit-outer-spin-button {
+  opacity: 1;
+  filter: brightness(0) saturate(100%) invert(60%) sepia(90%) saturate(2000%) hue-rotate(230deg) brightness(0.9);
+}
+/* Style number input spinner buttons */
+#videoId::-webkit-inner-spin-button,
+#videoId::-webkit-outer-spin-button {
+  opacity: 1;
+  cursor: pointer;
+}
+
+/* Chrome/Safari/Edge - style the spinner buttons */
+#videoId::-webkit-inner-spin-button {
+  background: var(--accent);
+  border-radius: 0 0.5rem 0.5rem 0;
+  width: 1.5rem;
+  height: 50%;
+}
+
+#videoId::-webkit-outer-spin-button {
+  background: var(--accent);
+  border-radius: 0.5rem 0 0 0.5rem;
+  width: 1.5rem;
+  height: 50%;
+}
+
+/* Firefox - hide native spinner and style */
+#videoId {
+  -moz-appearance: textfield;
+}
+
