@@ -54,6 +54,15 @@ def list_videos(
     return db.query(Video).filter(Video.director_id == user.id).order_by(Video.upload_time.desc()).all()
 
 
+@router.get("/available/list", response_model=list[VideoResponse])
+def list_available_videos(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get all available videos for viewers to watch."""
+    return db.query(Video).order_by(Video.upload_time.desc()).all()
+
+
 @router.get("/{video_id}", response_model=VideoResponse)
 def get_video(
     video_id: int,

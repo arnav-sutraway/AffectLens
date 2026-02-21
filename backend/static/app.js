@@ -26,6 +26,8 @@ function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
+  // Load available videos when switching to watchView
+  if (id === 'watchView') loadAvailableVideos();
 }
 
 function updateNav() {
@@ -195,12 +197,25 @@ document.getElementById('videoFile').onchange = async (e) => {
 };
 
 // Viewer
-document.getElementById('watchForm').onsubmit = (e) => {
-  e.preventDefault();
-  const id = parseInt(document.getElementById('videoId').value, 10);
-  if (id && id > 0) startWatching(id);
-  else alert('Please enter a valid positive Video ID');
-};
+async function loadAvailableVideos() {
+  try {
+    const videos = await api('/videos/available/list');
+    const container = document.getElementById('availableVideosList');
+    if (!videos || videos.length === 0) {
+      container.innerHTML = '<p>No videos available at this time.</p>';
+      return;
+    }
+    container.innerHTML = videos.map(v => `
+      <div class="video-item card" style="cursor: pointer; margin-bottom: 1rem;" onclick="startWatching(${v.id})">
+        <h3>${v.title || 'Untitled'}</h3>
+        <p>ID: ${v.id} • Uploaded: ${new Date(v.upload_time).toLocaleDateString()}</p>
+      </div>
+    `).join('');
+  } catch (ex) {
+    console.error('Failed to load videos:', ex);
+    document.getElementById('availableVideosList').innerHTML = '<p>Failed to load videos.</p>';
+  }
+}
 
 let currentSessionId = null;
 let streamRef = null;
