@@ -17,12 +17,17 @@ def infer_emotion(
     data = file.file.read()
     result = process_frame(data)
     if result is None:
-        return {"emotion": "neutral", "probability": 0.0, "valence": 0.0, "arousal": 0.0, "face_detected": False}
-    emotion, prob, valence, arousal = result
+        return {"emotion": "neutral", "probability": 0.0, "valence": 0.0, "arousal": 0.0, "face_detected": False, "landmarks": []}
+    # process_frame now returns (emotion, prob, valence, arousal, landmarks)
+    emotion, prob, valence, arousal, landmarks = result
+    lm_out = []
+    if landmarks:
+        lm_out = [{"x": float(x), "y": float(y)} for (x, y) in landmarks]
     return {
         "emotion": emotion,
         "probability": round(prob, 4),
         "valence": round(valence or 0, 4),
         "arousal": round(arousal or 0, 4),
         "face_detected": True,
+        "landmarks": lm_out,
     }

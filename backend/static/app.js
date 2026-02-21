@@ -229,23 +229,41 @@ async function startWatching(videoId) {
 let captureInterval = null;
 function startCapture() {
   if (!streamRef || !currentSessionId) return;
+  // Attach stream to visible webcam element if present
+  const webcamPreview = document.getElementById('webcamPreview');
+  const webcamVideo = document.getElementById('webcamVideo');
+  if (webcamVideo && streamRef) {
+    try { webcamVideo.srcObject = streamRef; webcamVideo.play().catch(()=>{}); webcamPreview.style.display = 'block'; } catch(e){}
+  }
   captureInterval = setInterval(captureFrame, 500);
 }
-function stopCapture() { clearInterval(captureInterval); captureInterval = null; }
+function stopCapture() { clearInterval(captureInterval); captureInterval = null; _hideWebcamPreview(); }
+
+function _hideWebcamPreview() {
+  const webcamPreview = document.getElementById('webcamPreview');
+  const webcamVideo = document.getElementById('webcamVideo');
+  const overlay = document.getElementById('overlayCanvas');
+  if (webcamVideo && webcamVideo.srcObject) { try { webcamVideo.pause(); webcamVideo.srcObject = null; } catch(e){} }
+  if (webcamPreview) webcamPreview.style.display = 'none';
+  if (overlay && overlay.getContext) { const octx = overlay.getContext('2d'); octx && octx.clearRect(0,0,overlay.width||0, overlay.height||0); }
+}
 
 async function captureFrame() {
   if (!streamRef || !currentSessionId) return;
-  const video = document.createElement('video');
-  video.srcObject = streamRef;
-  video.width = 640;
-  video.height = 480;
-  await video.play();
-  const canvas = document.createElement('canvas');
-  canvas.width = 640;
-  canvas.height = 480;
+  const webcamVideo = document.getElementById('webcamVideo');
+  if (!webcamVideo || webcamVideo.readyState < 2) return;
+  // Reuse a hidden capture canvas
+  if (!window._captureCanvas) {
+    window._captureCanvas = document.createElement('canvas');
+    window._captureCanvas.width = webcamVideo.videoWidth || 640;
+    window._captureCanvas.height = webcamVideo.videoHeight || 480;
+  }
+  const canvas = window._captureCanvas;
+  canvas.width = webcamVideo.videoWidth || 640;
+  canvas.height = webcamVideo.videoHeight || 480;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  ctx.drawImage(video, 0, 0);
+  ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
   canvas.toBlob(async (blob) => {
     if (!blob) return;
     const mainVideo = document.getElementById('mainVideo');
@@ -253,19 +271,34 @@ async function captureFrame() {
     try {
       const fd = new FormData();
       fd.append('file', blob, 'frame.jpg');
-      const data = await fetch(API + '/inference/emotion', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + getToken() },
-        body: fd
-      }).then(r => r.json());
+      const resp = await fetch(API + '/inference/emotion', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
+      const data = await resp.json();
+      // update badge
       if (data.face_detected) {
         document.getElementById('currentEmotion').textContent = data.emotion;
-        await api('/emotions/sessions/' + currentSessionId + '/readings', {
+        // persist reading
+        api('/emotions/sessions/' + currentSessionId + '/readings', {
           method: 'POST',
-          body: JSON.stringify({
-            readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }]
-          })
-        });
+          body: JSON.stringify({ readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }] })
+        }).catch(()=>{});
+      }
+      // draw landmarks on overlay
+      const overlay = document.getElementById('overlayCanvas');
+      if (overlay) {
+        overlay.width = overlay.clientWidth;
+        overlay.height = overlay.clientHeight;
+        const octx = overlay.getContext('2d');
+        octx.clearRect(0,0,overlay.width, overlay.height);
+        if (data.landmarks && Array.isArray(data.landmarks) && data.landmarks.length) {
+          octx.fillStyle = 'rgba(0,255,128,0.95)';
+          const vw = overlay.width, vh = overlay.height;
+          // landmarks are normalized to image size used on server; map using capture canvas aspect ratio
+          for (const lm of data.landmarks) {
+            const x = lm.x * vw;
+            const y = lm.y * vh;
+            octx.beginPath(); octx.arc(x, y, 2.2, 0, Math.PI*2); octx.fill();
+          }
+        }
       }
     } catch (e) { /* ignore */ }
   }, 'image/jpeg');
@@ -274,6 +307,7 @@ async function captureFrame() {
 async function finishWatching() {
   stopCapture();
   if (streamRef) { streamRef.getTracks().forEach(t => t.stop()); streamRef = null; }
+  _hideWebcamPreview();
   if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); videoBlobUrl = null; }
   if (currentSessionId) await api('/sessions/' + currentSessionId + '/complete', { method: 'POST' });
   showView('surveyView');
