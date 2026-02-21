@@ -1,0 +1,32 @@
+# Core
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+
+# Database
+sqlalchemy==2.0.25
+asyncpg==0.29.0
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# Auth
+python-jose[cryptography]==3.3.0
+
+# ML & Vision
+torch>=2.0.0
+torchvision>=0.15.0
+opencv-python-headless==4.9.0.80
+mediapipe>=0.10.13
+numpy==1.26.4
+Pillow==10.2.0
+
+# AI / Summarization
+transformers==4.37.2
+huggingface-hub==0.20.3
+
+# Utils
+python-dotenv==1.0.1
+pydantic[email]==2.6.1
+pydantic-settings==2.1.0
+aiofiles==23.2.1
+reportlab==4.0.9

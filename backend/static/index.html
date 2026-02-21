@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AffectLens — Real-Time Audience Emotion Intelligence</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <a href="/" class="logo">AffectLens</a>
+    <div class="nav-right" id="navUser"></div>
+  </nav>
+
+  <main class="container">
+    <!-- Login View -->
+    <section id="loginView" class="view">
+      <h1>Sign in</h1>
+      <p class="subtitle">Real-Time Audience Emotion Intelligence</p>
+      <form id="loginForm" class="card">
+        <p id="loginError" class="error"></p>
+        <div>
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" required>
+        </div>
+        <div>
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" required>
+        </div>
+        <button type="submit">Sign in</button>
+        <p class="link">No account? <a href="#" id="showRegister">Register</a></p>
+      </form>
+    </section>
+
+    <!-- Register View -->
+    <section id="registerView" class="view" style="display:none">
+      <h1>Create account</h1>
+      <p class="subtitle">Join as director or viewer</p>
+      <form id="registerForm" class="card">
+        <p id="registerError" class="error"></p>
+        <div>
+          <label for="regEmail">Email</label>
+          <input type="email" id="regEmail" required>
+        </div>
+        <div>
+          <label for="regPassword">Password</label>
+          <input type="password" id="regPassword" required minlength="1">
+        </div>
+        <div>
+          <label for="regRole">Role</label>
+          <select id="regRole">
+            <option value="director">Director — Upload videos, view analytics</option>
+            <option value="viewer">Viewer — Watch clips, provide feedback</option>
+          </select>
+        </div>
+        <button type="submit">Register</button>
+        <p class="link">Have an account? <a href="#" id="showLogin">Sign in</a></p>
+      </form>
+    </section>
+
+    <!-- Director Dashboard -->
+    <section id="dashboardView" class="view" style="display:none">
+      <h1>Director Dashboard</h1>
+      <p class="subtitle">Upload clips and view emotional analytics</p>
+      <div class="upload-row">
+        <input type="text" id="videoTitle" placeholder="Video title">
+        <label class="btn btn-primary">
+          Upload MP4
+          <input type="file" id="videoFile" accept=".mp4" hidden>
+        </label>
+      </div>
+      <div class="grid">
+        <div class="video-list">
+          <h2>Your Videos</h2>
+          <div id="videoList"></div>
+        </div>
+        <div class="analytics-panel">
+          <div id="analyticsPlaceholder">Select a video to view analytics</div>
+          <div id="analyticsContent" style="display:none">
+            <div class="stats-row" id="statsRow"></div>
+            <div class="chart-container">
+              <h3>Emotion Over Time</h3>
+              <div id="chartArea"></div>
+            </div>
+            <div class="summary-box">
+              <h3>AI Summary</h3>
+              <p id="aiSummary"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Viewer Watch -->
+    <section id="watchView" class="view" style="display:none">
+      <h1>Watch & Respond</h1>
+      <p class="subtitle">Enter the video ID assigned by your director</p>
+      <form id="watchForm" class="card">
+        <div>
+          <label for="videoId">Video ID</label>
+          <input type="number" id="videoId" placeholder="e.g. 1" required>
+        </div>
+        <button type="submit">Start Watching</button>
+      </form>
+    </section>
+
+    <!-- Viewer Watching (video player) -->
+    <section id="watchingView" class="view" style="display:none">
+      <div class="video-container">
+        <video id="mainVideo" controls></video>
+        <div class="emotion-badge" id="emotionBadge">Detected: <span id="currentEmotion">neutral</span></div>
+      </div>
+      <p class="hint">Watch the video. Your reactions are captured every 500ms (with consent).</p>
+    </section>
+
+    <!-- Survey View -->
+    <section id="surveyView" class="view" style="display:none">
+      <h2>Post-Viewing Survey</h2>
+      <form id="surveyForm" class="card">
+        <div>
+          <label for="reportedEmotion">Primary emotion you felt</label>
+          <select id="reportedEmotion" required>
+            <option value="">Select...</option>
+            <option value="angry">angry</option>
+            <option value="disgust">disgust</option>
+            <option value="fear">fear</option>
+            <option value="happy">happy</option>
+            <option value="sad">sad</option>
+            <option value="surprise">surprise</option>
+            <option value="neutral">neutral</option>
+          </select>
+        </div>
+        <div>
+          <label>Intensity (1–10) <span id="intensityVal">5</span></label>
+          <input type="range" id="intensity" min="1" max="10" value="5">
+        </div>
+        <div>
+          <label for="feedbackText">Optional feedback</label>
+          <textarea id="feedbackText" rows="3" placeholder="Any additional thoughts..."></textarea>
+        </div>
+        <button type="submit">Submit</button>
+      </form>
+    </section>
+
+    <!-- Thank You -->
+    <section id="thankYouView" class="view" style="display:none">
+      <h2>Thank you!</h2>
+      <p>Your feedback has been submitted.</p>
+      <a href="#" class="btn" id="watchAnother">Watch another</a>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

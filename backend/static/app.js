@@ -1,0 +1,272 @@
+const API = ''; // Same origin - backend serves this
+
+function getToken() { return localStorage.getItem('token'); }
+function setToken(t) { localStorage.setItem('token', t); }
+function setUser(u) { localStorage.setItem('user', JSON.stringify(u)); }
+function getUser() {
+  try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
+}
+function clearAuth() { localStorage.removeItem('token'); localStorage.removeItem('user'); }
+
+async function api(path, opts = {}) {
+  const headers = { ...opts.headers };
+  if (!headers['Content-Type'] && typeof opts.body === 'string') headers['Content-Type'] = 'application/json';
+  const token = getToken();
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API + path, { ...opts, headers });
+  if (res.status === 401) { clearAuth(); window.location.reload(); return; }
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+  if (!res.ok) throw { status: res.status, data, message: data?.detail || res.statusText };
+  return data;
+}
+
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'block';
+}
+
+function updateNav() {
+  const user = getUser();
+  const el = document.getElementById('navUser');
+  if (!user) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <span>${user.email}</span>
+    <span class="role">${user.role}</span>
+    ${user.role === 'director' ? '<a href="#" data-view="dashboardView">Dashboard</a>' : '<a href="#" data-view="watchView">Watch</a>'}
+    <a href="#" id="logout">Logout</a>
+  `;
+  el.querySelector('#logout').onclick = (e) => { e.preventDefault(); clearAuth(); window.location.reload(); };
+  el.querySelectorAll('[data-view]').forEach(a => {
+    a.onclick = (e) => { e.preventDefault(); showView(a.dataset.view); };
+  });
+}
+
+// Login
+document.getElementById('showRegister').onclick = (e) => { e.preventDefault(); showView('registerView'); document.getElementById('registerError').textContent = ''; };
+document.getElementById('showLogin').onclick = (e) => { e.preventDefault(); showView('loginView'); document.getElementById('loginError').textContent = ''; };
+
+document.getElementById('loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('loginError');
+  err.textContent = '';
+  try {
+    const data = await api('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: document.getElementById('loginEmail').value.trim(),
+        password: document.getElementById('loginPassword').value
+      })
+    });
+    setToken(data.access_token);
+    setUser({ id: data.user_id, email: document.getElementById('loginEmail').value.trim(), role: data.role });
+    updateNav();
+    showView(data.role === 'director' ? 'dashboardView' : 'watchView');
+    if (data.role === 'director') loadVideos();
+  } catch (ex) {
+    const d = ex.data?.detail ?? ex.data;
+    err.textContent = (Array.isArray(d) ? d.map(x => x.msg).join(', ') : (typeof d === 'string' ? d : ex.data?.detail || ex.message)) || 'Login failed';
+  }
+};
+
+document.getElementById('registerForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('registerError');
+  err.textContent = '';
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const role = document.getElementById('regRole').value;
+  if (!email || !password) { err.textContent = 'Email and password required'; return; }
+  try {
+    const data = await api('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, role })
+    });
+    setToken(data.access_token);
+    setUser({ id: data.user_id, email, role: data.role });
+    updateNav();
+    showView(data.role === 'director' ? 'dashboardView' : 'watchView');
+    if (data.role === 'director') loadVideos();
+  } catch (ex) {
+    const d = ex.data?.detail ?? ex.data;
+    const msg = Array.isArray(d) ? d.map(x => (x.loc ? x.loc.slice(1).join('.') + ': ' : '') + (x.msg || '')).join('; ') : (typeof d === 'string' ? d : ex.data?.detail || ex.message);
+    err.textContent = msg || 'Registration failed';
+  }
+};
+
+// Director
+let selectedVideoId = null;
+async function loadVideos() {
+  try {
+    const list = await api('/videos');
+    const el = document.getElementById('videoList');
+    el.innerHTML = list.length ? list.map(v => `
+      <button type="button" class="${v.id === selectedVideoId ? 'active' : ''}" data-id="${v.id}">
+        <div>${v.title || v.filename}</div>
+        <div class="filename">${v.filename}</div>
+      </button>
+    `).join('') : '<p style="color:var(--text-muted)">No videos yet</p>';
+    el.querySelectorAll('button').forEach(b => {
+      b.onclick = () => { selectedVideoId = parseInt(b.dataset.id); loadVideos(); loadAnalytics(selectedVideoId); };
+    });
+  } catch (e) { console.error(e); }
+}
+
+async function loadAnalytics(videoId) {
+  const ph = document.getElementById('analyticsPlaceholder');
+  const content = document.getElementById('analyticsContent');
+  try {
+    const a = await api('/analytics/video/' + videoId);
+    ph.style.display = 'none';
+    content.style.display = 'block';
+    document.getElementById('statsRow').innerHTML = `
+      <div class="stat-box"><div class="label">Alignment</div><div class="value" style="color:var(--accent)">${a.alignment_score ?? 0}%</div></div>
+      <div class="stat-box"><div class="label">Volatility</div><div class="value" style="color:#f59e0b">${a.emotional_volatility ?? 0}%</div></div>
+      <div class="stat-box"><div class="label">Model vs Survey</div><div class="value" style="color:#22c55e">${a.model_vs_survey_alignment ?? '-'}%</div></div>
+      <div class="stat-box"><a href="#" id="exportPdf">Export PDF</a></div>
+    `;
+    document.getElementById('exportPdf').onclick = async (e) => {
+      e.preventDefault();
+      const res = await fetch(API + '/analytics/video/' + videoId + '/export', { headers: { Authorization: 'Bearer ' + getToken() } });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'analytics.pdf'; a.click();
+      URL.revokeObjectURL(url);
+    };
+    document.getElementById('aiSummary').textContent = a.ai_summary || 'No summary available.';
+    const curve = a.avg_emotion_curve || [];
+    document.getElementById('chartArea').innerHTML = curve.length ? '<p style="color:var(--text-muted)">' + curve.map(c => c.timestamp + 's: ' + c.emotion).join(', ') + '</p>' : '<p style="color:var(--text-muted)">No data</p>';
+  } catch (e) { ph.style.display = 'block'; content.style.display = 'none'; ph.textContent = 'Failed to load analytics'; }
+}
+
+document.getElementById('videoFile').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const title = document.getElementById('videoTitle').value || file.name;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('title', title);
+  try {
+    await api('/videos/upload', { method: 'POST', body: fd });
+    document.getElementById('videoTitle').value = '';
+    e.target.value = '';
+    loadVideos();
+  } catch (ex) { alert((ex.data?.detail || ex.message) || 'Upload failed'); }
+};
+
+// Viewer
+document.getElementById('watchForm').onsubmit = (e) => {
+  e.preventDefault();
+  const id = parseInt(document.getElementById('videoId').value, 10);
+  if (id) startWatching(id);
+};
+
+let currentSessionId = null;
+let streamRef = null;
+let videoBlobUrl = null;
+
+async function startWatching(videoId) {
+  try {
+    const sess = await api('/sessions', { method: 'POST', body: JSON.stringify({ video_id: videoId }) });
+    currentSessionId = sess.id;
+    const res = await fetch(API + '/videos/' + videoId + '/stream', { headers: { Authorization: 'Bearer ' + getToken() } });
+    if (!res.ok) throw new Error('Could not load video');
+    videoBlobUrl = URL.createObjectURL(await res.blob());
+    const consent = confirm('To capture your emotional reactions, we need webcam access. We only store emotion data—no face images. Click OK to enable, or Cancel to skip.');
+    if (consent) {
+      try { streamRef = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } }); } catch (e) { console.warn('Webcam denied'); }
+    }
+    showView('watchingView');
+    const video = document.getElementById('mainVideo');
+    video.src = videoBlobUrl;
+    video.onended = () => { finishWatching(); };
+    video.onplay = () => startCapture();
+    video.onpause = () => stopCapture();
+  } catch (ex) { alert((ex.data?.detail || ex.message) || 'Failed to start'); }
+}
+
+let captureInterval = null;
+function startCapture() {
+  if (!streamRef || !currentSessionId) return;
+  captureInterval = setInterval(captureFrame, 500);
+}
+function stopCapture() { clearInterval(captureInterval); captureInterval = null; }
+
+async function captureFrame() {
+  if (!streamRef || !currentSessionId) return;
+  const video = document.createElement('video');
+  video.srcObject = streamRef;
+  video.width = 640;
+  video.height = 480;
+  await video.play();
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 480;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.drawImage(video, 0, 0);
+  canvas.toBlob(async (blob) => {
+    if (!blob) return;
+    const mainVideo = document.getElementById('mainVideo');
+    const ts = mainVideo ? mainVideo.currentTime : 0;
+    try {
+      const fd = new FormData();
+      fd.append('file', blob, 'frame.jpg');
+      const data = await fetch(API + '/inference/emotion', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + getToken() },
+        body: fd
+      }).then(r => r.json());
+      if (data.face_detected) {
+        document.getElementById('currentEmotion').textContent = data.emotion;
+        await api('/emotions/sessions/' + currentSessionId + '/readings', {
+          method: 'POST',
+          body: JSON.stringify({
+            readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }]
+          })
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }, 'image/jpeg');
+}
+
+async function finishWatching() {
+  stopCapture();
+  if (streamRef) { streamRef.getTracks().forEach(t => t.stop()); streamRef = null; }
+  if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); videoBlobUrl = null; }
+  if (currentSessionId) await api('/sessions/' + currentSessionId + '/complete', { method: 'POST' });
+  showView('surveyView');
+}
+
+document.getElementById('surveyForm').onsubmit = async (e) => {
+  e.preventDefault();
+  if (!currentSessionId) return;
+  try {
+    await api('/survey/sessions/' + currentSessionId, {
+      method: 'POST',
+      body: JSON.stringify({
+        reported_emotion: document.getElementById('reportedEmotion').value,
+        intensity: parseInt(document.getElementById('intensity').value, 10),
+        feedback_text: document.getElementById('feedbackText').value || undefined
+      })
+    });
+    showView('thankYouView');
+  } catch (ex) { alert((ex.data?.detail || ex.message) || 'Submit failed'); }
+};
+
+document.getElementById('intensity').oninput = () => { document.getElementById('intensityVal').textContent = document.getElementById('intensity').value; };
+document.getElementById('watchAnother').onclick = (e) => { e.preventDefault(); currentSessionId = null; showView('watchView'); };
+
+// Init
+(function() {
+  const user = getUser();
+  if (user && getToken()) {
+    updateNav();
+    showView(user.role === 'director' ? 'dashboardView' : 'watchView');
+    if (user.role === 'director') loadVideos();
+  } else {
+    showView('loginView');
+  }
+})();
