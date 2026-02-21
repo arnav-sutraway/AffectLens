@@ -109,6 +109,11 @@
       <div class="video-container">
         <video id="mainVideo" controls></video>
         <div class="emotion-badge" id="emotionBadge">Detected: <span id="currentEmotion">neutral</span></div>
+        <!-- Webcam preview + overlay for viewer to see ML landmarks live -->
+        <div class="webcam-preview" id="webcamPreview" style="display:none">
+          <video id="webcamVideo" autoplay muted playsinline></video>
+          <canvas id="overlayCanvas"></canvas>
+        </div>
       </div>
       <p class="hint">Watch the video. Your reactions are captured every 500ms (with consent).</p>
     </section>
