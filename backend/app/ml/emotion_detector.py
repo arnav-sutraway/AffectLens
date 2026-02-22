@@ -18,8 +18,6 @@ def _get_face_detector():
         try:
             import mediapipe as mp
             mp_face = mp.solutions.face_mesh
-            # static_image_mode=True for single frames (webcam snapshots)
-            # Very low thresholds to maximize face detection
             _face_detector = mp_face.FaceMesh(
                 static_image_mode=True,
                 max_num_faces=1,
@@ -44,7 +42,6 @@ def _get_emotion_model():
     if _emotion_model is None:
         try:
             from transformers import pipeline
-            # top_k=7 to see all emotions; max sensitivity
             _emotion_model = pipeline(
                 "image-classification",
                 model="trpakov/vit-face-expression",
@@ -68,10 +65,12 @@ def detect_face(image: np.ndarray) -> Optional[Tuple[int, int, int, int, Optiona
         # Fallback: center crop and no landmarks
         return (w // 4, h // 4, w // 2, h // 2, None)
 
-    import cv2
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if len(image.shape) == 3 else image
-    if len(rgb.shape) == 2:
-        rgb = np.stack([rgb] * 3, axis=-1)
+    if len(image.shape) == 3:
+        rgb = image[..., :3] if image.shape[2] >= 3 else np.stack([image[..., 0]] * 3, axis=-1)
+    else:
+        rgb = np.stack([image] * 3, axis=-1)
+    if rgb.dtype != np.uint8:
+        rgb = rgb.astype(np.uint8)
     results = detector.process(rgb)
     if not getattr(results, "multi_face_landmarks", None):
         return None
@@ -79,11 +78,11 @@ def detect_face(image: np.ndarray) -> Optional[Tuple[int, int, int, int, Optiona
     face_lms = results.multi_face_landmarks[0]
     xs = [lm.x for lm in face_lms.landmark]
     ys = [lm.y for lm in face_lms.landmark]
-    # normalized bbox
-    xmin = max(0.0, min(xs))
-    ymin = max(0.0, min(ys))
-    xmax = min(1.0, max(xs))
-    ymax = min(1.0, max(ys))
+    pad = 0.12
+    xmin = max(0.0, min(xs) - pad)
+    ymin = max(0.0, min(ys) - pad)
+    xmax = min(1.0, max(xs) + pad)
+    ymax = min(1.0, max(ys) + pad)
     # convert to pixel coords for bbox
     x = int(xmin * w)
     y = int(ymin * h)
@@ -103,15 +102,13 @@ def predict_emotion(face_crop: np.ndarray) -> Tuple[str, float, Optional[float],
 
     model = _get_emotion_model()
     if model is None:
-        # Heuristic: balanced across all 7 emotions (used when model unavailable)
         gray = np.mean(face_crop, axis=-1) if len(face_crop.shape) == 3 else face_crop
         mean_val = float(np.mean(gray))
         std_val = float(np.std(gray))
-        # Map (mean, variance) to each emotion equally via combined score
-        combined = mean_val * 0.4 + min(std_val, 60) * 0.6
+        combined = mean_val * 0.4 + min(std_val, 55) * 0.6
         idx = int(combined) % 7
         label = EMOTION_LABELS[idx]
-        return (label, 0.65, valence_map.get(label, 0), arousal_map.get(label, 0))
+        return (label, 0.7, valence_map.get(label, 0), arousal_map.get(label, 0))
 
     # Preprocess crop: pad to square, enhance contrast (CLAHE) if available,
     # and resize to model input (224x224) for more consistent predictions.
@@ -135,11 +132,10 @@ def predict_emotion(face_crop: np.ndarray) -> Tuple[str, float, Optional[float],
         right = size - w - left
         fc = cv2.copyMakeBorder(fc, top, bottom, left, right, cv2.BORDER_REPLICATE)
 
-        # CLAHE: moderate enhancement, balanced across expressions
         try:
             lab = cv2.cvtColor(fc, cv2.COLOR_RGB2LAB)
             l, a, b = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
             cl = clahe.apply(l)
             lab = cv2.merge((cl, a, b))
             fc = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
@@ -169,16 +165,7 @@ def predict_emotion(face_crop: np.ndarray) -> Tuple[str, float, Optional[float],
         top = items[0]
         label = top.get("label", "neutral").lower()
         prob = float(top.get("score", 0.0))
-        # Filter low-confidence: default to neutral to reduce incorrect detections
-        if prob < 0.4:
-            label, prob = "neutral", 0.5
-        elif len(items) > 1 and prob < 0.55:
-            # Only override on genuine near-tie
-            second = items[1]
-            sec_label = second.get("label", "").lower()
-            sec_prob = float(second.get("score", 0.0))
-            if sec_label in EMOTION_LABELS and sec_prob >= prob - 0.05:
-                label, prob = sec_label, sec_prob
+        # Trust top prediction only; no override - keeps all 7 emotions equally possible
         if label not in EMOTION_LABELS:
             label = "neutral"
     else:
