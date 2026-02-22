@@ -257,6 +257,25 @@ let currentSessionId = null;
 let streamRef = null;
 let videoBlobUrl = null;
 
+// Short rolling aggregator to increase sensitivity while smoothing noise.
+window._recentEmotions = window._recentEmotions || [];
+function pushEmotion(e) {
+  window._recentEmotions.push(e);
+  if (window._recentEmotions.length > 6) window._recentEmotions.shift();
+  const scores = {};
+  for (const r of window._recentEmotions) {
+    scores[r.emotion] = (scores[r.emotion] || 0) + (r.probability || 0.2);
+  }
+  const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  if (entries.length) {
+    const chosen = entries[0][0];
+    const el = document.getElementById('currentEmotion');
+    if (el) el.textContent = chosen;
+    return chosen;
+  }
+  return null;
+}
+
 async function startWatching(videoId) {
   try {
     setUIState(UIState.LOADING_VIDEO);
@@ -268,7 +287,10 @@ async function startWatching(videoId) {
     setUIState(UIState.WAITING_CONSENT);
     const consent = confirm('To capture your emotional reactions, we need webcam access. We only store emotion data—no face images. Click OK to enable, or Cancel to skip.');
     if (consent) {
-      try { streamRef = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } }); } catch (e) { console.warn('Webcam denied'); }
+      try {
+        // Ask for a higher resolution if available (browser will downgrade if unsupported)
+        streamRef = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } });
+      } catch (e) { console.warn('Webcam denied or higher res not available'); }
     }
     showView('watchingView');
     const video = document.getElementById('mainVideo');
@@ -303,7 +325,8 @@ function startCapture() {
   if (webcamVideo && streamRef) {
     try { webcamVideo.srcObject = streamRef; webcamVideo.play().catch(()=>{}); webcamPreview.style.display = 'block'; } catch(e){}
   }
-  captureInterval = setInterval(captureFrame, 500);
+  // Increase capture frequency for more responsive detection
+  captureInterval = setInterval(captureFrame, 250);
 }
 function stopCapture() { clearInterval(captureInterval); captureInterval = null; _hideWebcamPreview(); }
 
@@ -341,10 +364,10 @@ async function captureFrame() {
       fd.append('file', blob, 'frame.jpg');
       const resp = await fetch(API + '/inference/emotion', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
       const data = await resp.json();
-      // update badge
+      // update badge (use aggregator for sensitivity + smoothing)
       if (data.face_detected) {
-        document.getElementById('currentEmotion').textContent = data.emotion;
-        // persist reading
+        try { pushEmotion({ emotion: data.emotion, probability: data.probability || 0.5 }); } catch (e) {}
+        // persist reading (still store raw model output)
         api('/emotions/sessions/' + currentSessionId + '/readings', {
           method: 'POST',
           body: JSON.stringify({ readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }] })
