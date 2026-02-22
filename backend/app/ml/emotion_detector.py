@@ -18,8 +18,15 @@ def _get_face_detector():
         try:
             import mediapipe as mp
             mp_face = mp.solutions.face_mesh
-            # More sensitive defaults (lower confidence) to detect faces more often
-            _face_detector = mp_face.FaceMesh(static_image_mode=True, max_num_faces=1, refine_landmarks=True, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+            # static_image_mode=True for single frames (webcam snapshots)
+            # Very low thresholds to maximize face detection
+            _face_detector = mp_face.FaceMesh(
+                static_image_mode=True,
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.05,
+                min_tracking_confidence=0.05,
+            )
         except Exception:
             _face_detector = False  # Disabled
     return _face_detector if _face_detector else None
@@ -37,11 +44,11 @@ def _get_emotion_model():
     if _emotion_model is None:
         try:
             from transformers import pipeline
-            # Request top_k=3 so we can disambiguate 'neutral' predictions
+            # top_k=7 to see all emotions; max sensitivity
             _emotion_model = pipeline(
                 "image-classification",
                 model="trpakov/vit-face-expression",
-                top_k=3,
+                top_k=7,
             )
         except Exception:
             _emotion_model = False  # Use heuristic fallback
@@ -96,16 +103,60 @@ def predict_emotion(face_crop: np.ndarray) -> Tuple[str, float, Optional[float],
 
     model = _get_emotion_model()
     if model is None:
-        # Fallback: heuristic based on face region intensity (demo mode)
+        # Heuristic: balanced across all 7 emotions (used when model unavailable)
         gray = np.mean(face_crop, axis=-1) if len(face_crop.shape) == 3 else face_crop
-        mean_val = np.mean(gray)
-        if mean_val < 80:
-            return ("sad", 0.7, -0.3, 0.2)
-        if mean_val > 180:
-            return ("happy", 0.7, 0.5, 0.4)
-        return ("neutral", 0.8, 0.0, 0.2)
+        mean_val = float(np.mean(gray))
+        std_val = float(np.std(gray))
+        # Map (mean, variance) to each emotion equally via combined score
+        combined = mean_val * 0.4 + min(std_val, 60) * 0.6
+        idx = int(combined) % 7
+        label = EMOTION_LABELS[idx]
+        return (label, 0.65, valence_map.get(label, 0), arousal_map.get(label, 0))
 
-    pil = Image.fromarray(face_crop)
+    # Preprocess crop: pad to square, enhance contrast (CLAHE) if available,
+    # and resize to model input (224x224) for more consistent predictions.
+    proc_img = None
+    try:
+        import cv2
+        fc = face_crop
+        # Ensure uint8 and 3 channels
+        if fc.dtype != np.uint8:
+            fc = fc.astype(np.uint8)
+        if fc.ndim == 2:
+            fc = np.stack([fc] * 3, axis=-1)
+        if fc.shape[2] == 4:
+            fc = fc[..., :3]
+
+        h, w = fc.shape[:2]
+        size = max(h, w)
+        top = (size - h) // 2
+        bottom = size - h - top
+        left = (size - w) // 2
+        right = size - w - left
+        fc = cv2.copyMakeBorder(fc, top, bottom, left, right, cv2.BORDER_REPLICATE)
+
+        # CLAHE: moderate enhancement, balanced across expressions
+        try:
+            lab = cv2.cvtColor(fc, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            cl = clahe.apply(l)
+            lab = cv2.merge((cl, a, b))
+            fc = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        except Exception:
+            pass
+
+        proc = cv2.resize(fc, (224, 224), interpolation=cv2.INTER_AREA)
+        proc_img = Image.fromarray(proc)
+    except Exception:
+        # Fallback: use PIL to resize
+        try:
+            pil_tmp = Image.fromarray(face_crop)
+            proc_img = pil_tmp.convert('RGB').resize((224, 224), Image.BILINEAR)
+        except Exception:
+            proc_img = Image.fromarray((face_crop * 255).astype('uint8')).convert('RGB').resize((224, 224), Image.BILINEAR)
+
+    pil = proc_img
     result = model(pil)
     # Normalize result shape: pipeline may return list-of-lists when top_k>1
     items = None
@@ -118,13 +169,15 @@ def predict_emotion(face_crop: np.ndarray) -> Tuple[str, float, Optional[float],
         top = items[0]
         label = top.get("label", "neutral").lower()
         prob = float(top.get("score", 0.0))
-        # If the top label is neutral but a close second exists, prefer it
-        if label == "neutral" and len(items) > 1:
+        # Filter low-confidence: default to neutral to reduce incorrect detections
+        if prob < 0.4:
+            label, prob = "neutral", 0.5
+        elif len(items) > 1 and prob < 0.55:
+            # Only override on genuine near-tie
             second = items[1]
-            sec_label = second.get("label", "neutral").lower()
+            sec_label = second.get("label", "").lower()
             sec_prob = float(second.get("score", 0.0))
-            # If the second non-neutral is within 0.15 of top, prefer it
-            if sec_label != "neutral" and sec_prob >= prob - 0.15:
+            if sec_label in EMOTION_LABELS and sec_prob >= prob - 0.05:
                 label, prob = sec_label, sec_prob
         if label not in EMOTION_LABELS:
             label = "neutral"
@@ -136,8 +189,8 @@ def predict_emotion(face_crop: np.ndarray) -> Tuple[str, float, Optional[float],
 def process_frame(image_bytes: bytes) -> Optional[Tuple[str, float, Optional[float], Optional[float], Optional[list]]]:
     """
     Process a single frame (JPEG/PNG bytes).
-    Returns (emotion, probability, valence, arousal, landmarks) or None if no face.
-    Landmarks are a list of (x_norm, y_norm) pairs normalized to the input image size.
+    Returns (emotion, probability, valence, arousal, landmarks) or None.
+    Uses center crop fallback when face detection fails so emotion is always predicted.
     """
     try:
         img = Image.open(io.BytesIO(image_bytes))
@@ -145,15 +198,21 @@ def process_frame(image_bytes: bytes) -> Optional[Tuple[str, float, Optional[flo
         if len(arr.shape) == 2:
             arr = np.stack([arr] * 3, axis=-1)
         res = detect_face(arr)
-        if res is None:
-            return None
-        # detect_face now returns (x, y, w, h, landmarks)
-        if len(res) == 5:
-            x, y, w, h, landmarks = res
+        landmarks = None
+        if res is not None:
+            if len(res) == 5:
+                x, y, w, h, landmarks = res
+            else:
+                x, y, w, h = res
+            crop = arr[y : y + h, x : x + w]
         else:
-            x, y, w, h = res
-            landmarks = None
-        crop = arr[y : y + h, x : x + w]
+            h_img, w_img = arr.shape[:2]
+            size = min(h_img, w_img) * 2 // 3
+            x = (w_img - size) // 2
+            y = (h_img - size) // 2
+            x = max(0, x)
+            y = max(0, y)
+            crop = arr[y : y + size, x : x + size]
         if crop.size == 0:
             return None
         emotion, prob, valence, arousal = predict_emotion(crop)

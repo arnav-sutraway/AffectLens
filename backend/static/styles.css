@@ -71,7 +71,6 @@ h3 { font-size: 0.875rem; color: var(--text-muted); margin: 0 0 0.5rem 0; }
 .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 1.5rem; }
 @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
 
-.video-list { }
 .video-item {
   position: relative;
   margin-bottom: 0.5rem;
