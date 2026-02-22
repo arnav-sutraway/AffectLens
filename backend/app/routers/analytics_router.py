@@ -165,6 +165,24 @@ def _render_pdf(analytics: AnalyticsResponse) -> bytes:
     c.drawString(100, 730, f"Alignment Score: {analytics.alignment_score}%")
     c.drawString(100, 710, f"Emotional Volatility: {analytics.emotional_volatility}%")
     c.drawString(100, 680, "AI Summary:")
-    c.drawString(100, 660, analytics.ai_summary or "N/A")
+    # Wrap summary text to stay within page
+    summary = analytics.ai_summary or "N/A"
+    words = summary.split()
+    lines = []
+    current = ""
+    for word in words:
+        if len(current) + len(word) + 1 > 70:
+            if current:
+                lines.append(current)
+            current = word
+        else:
+            current += (" " if current else "") + word
+    if current:
+        lines.append(current)
+    y = 660
+    for line in lines:
+        c.drawString(100, y, line)
+        y -= 15
     c.save()
+    buf.seek(0)
     return buf.getvalue()

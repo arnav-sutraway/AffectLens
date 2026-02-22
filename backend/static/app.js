@@ -62,8 +62,16 @@ function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
-  // Load available videos when switching to watchView
   if (id === 'watchView') loadAvailableVideos();
+}
+
+function showStatPopup(title, text) {
+  document.getElementById('statPopupTitle').textContent = title;
+  document.getElementById('statPopupText').textContent = text;
+  document.getElementById('statPopup').style.display = 'flex';
+}
+function closeStatPopup() {
+  document.getElementById('statPopup').style.display = 'none';
 }
 
 function updateNav() {
@@ -73,7 +81,7 @@ function updateNav() {
   el.innerHTML = `
     <span>${user.email}</span>
     <span class="role">${user.role}</span>
-    ${user.role === 'director' ? '<a href="#" data-view="dashboardView">Dashboard</a>' : '<a href="#" data-view="watchView">Watch</a>'}
+    ${String(user.role || '').toLowerCase() === 'director' ? '<a href="#" data-view="dashboardView">Dashboard</a>' : '<a href="#" data-view="watchView">Watch</a>'}
     <a href="#" id="logout">Logout</a>
   `;
   el.querySelector('#logout').onclick = (e) => { e.preventDefault(); clearAuth(); window.location.reload(); };
@@ -81,6 +89,10 @@ function updateNav() {
     a.onclick = (e) => { e.preventDefault(); showView(a.dataset.view); };
   });
 }
+
+// Stat popup
+document.getElementById('statPopup').onclick = (e) => { if (e.target.id === 'statPopup') closeStatPopup(); };
+document.querySelector('.stat-popup-close').onclick = closeStatPopup;
 
 // Login
 document.getElementById('showRegister').onclick = (e) => { e.preventDefault(); showView('registerView'); document.getElementById('registerError').textContent = ''; };
@@ -101,8 +113,8 @@ document.getElementById('loginForm').onsubmit = async (e) => {
     setToken(data.access_token);
     setUser({ id: data.user_id, email: document.getElementById('loginEmail').value.trim(), role: data.role });
     updateNav();
-    showView(data.role === 'director' ? 'dashboardView' : 'watchView');
-    if (data.role === 'director') loadVideos();
+    showView(String(data.role || '').toLowerCase() === 'director' ? 'dashboardView' : 'watchView');
+    if (String(data.role || '').toLowerCase() === 'director') loadVideos();
   } catch (ex) {
     const d = ex.data?.detail ?? ex.data;
     err.textContent = (Array.isArray(d) ? d.map(x => x.msg).join(', ') : (typeof d === 'string' ? d : ex.data?.detail || ex.message)) || 'Login failed';
@@ -125,8 +137,8 @@ document.getElementById('registerForm').onsubmit = async (e) => {
     setToken(data.access_token);
     setUser({ id: data.user_id, email, role: data.role });
     updateNav();
-    showView(data.role === 'director' ? 'dashboardView' : 'watchView');
-    if (data.role === 'director') loadVideos();
+    showView(String(data.role || '').toLowerCase() === 'director' ? 'dashboardView' : 'watchView');
+    if (String(data.role || '').toLowerCase() === 'director') loadVideos();
   } catch (ex) {
     const d = ex.data?.detail ?? ex.data;
     const msg = Array.isArray(d) ? d.map(x => (x.loc ? x.loc.slice(1).join('.') + ': ' : '') + (x.msg || '')).join('; ') : (typeof d === 'string' ? d : ex.data?.detail || ex.message);
@@ -181,21 +193,32 @@ async function loadAnalytics(videoId) {
     const a = await api('/analytics/video/' + videoId);
     ph.style.display = 'none';
     content.style.display = 'block';
+    const statExplanations = {
+      alignment: { title: 'Alignment', text: 'Measures how well the audience\'s emotional reactions (detected by our model) match your intended emotional beats. A higher score indicates viewers felt what you intended at key moments in the video.' },
+      volatility: { title: 'Volatility', text: 'Shows how frequently emotions change throughout the video. Higher volatility means the audience experienced more emotional shifts; lower volatility suggests more consistent emotional engagement.' },
+      modelVsSurvey: { title: 'Model vs Survey', text: 'Compares our AI model\'s emotion predictions with what viewers reported in the post-viewing survey. This shows how well the automatic facial analysis aligns with viewers\' self-reported feelings.' }
+    };
     document.getElementById('statsRow').innerHTML = `
-      <div class="stat-box"><div class="label">Alignment</div><div class="value" style="color:var(--accent)">${a.alignment_score ?? 0}%</div></div>
-      <div class="stat-box"><div class="label">Volatility</div><div class="value" style="color:#f59e0b">${a.emotional_volatility ?? 0}%</div></div>
-      <div class="stat-box"><div class="label">Model vs Survey</div><div class="value" style="color:#22c55e">${a.model_vs_survey_alignment ?? '-'}%</div></div>
-      <div class="stat-box stat-box-download">
+      <div class="stat-box stat-box-clickable" data-stat="alignment"><div class="label">Alignment</div><div class="value" style="color:var(--accent)">${a.alignment_score ?? 0}%</div></div>
+      <div class="stat-box stat-box-clickable" data-stat="volatility"><div class="label">Volatility</div><div class="value" style="color:#f59e0b">${a.emotional_volatility ?? 0}%</div></div>
+      <div class="stat-box stat-box-clickable" data-stat="modelVsSurvey"><div class="label">Model vs Survey</div><div class="value" style="color:#22c55e">${a.model_vs_survey_alignment ?? '-'}%</div></div>
+      <div class="stat-box stat-box-download" id="downloadReportBlock">
         <div class="label">Download Report</div>
-        <div class="download-symbol" id="exportPdf" aria-label="Download PDF">⬇</div>
+        <div class="download-symbol" aria-label="Download PDF">⬇</div>
       </div>
     `;
-    document.getElementById('exportPdf').onclick = async (e) => {
+    document.querySelectorAll('.stat-box-clickable').forEach(box => {
+      box.onclick = () => {
+        const s = statExplanations[box.dataset.stat];
+        if (s) showStatPopup(s.title, s.text);
+      };
+    });
+    document.getElementById('downloadReportBlock').onclick = async (e) => {
       e.preventDefault();
       const res = await fetch(API + '/analytics/video/' + videoId + '/export', { headers: { Authorization: 'Bearer ' + getToken() } });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'analytics.pdf'; a.click();
+      const aEl = document.createElement('a'); aEl.href = url; aEl.download = 'analytics.pdf'; aEl.click();
       URL.revokeObjectURL(url);
     };
     document.getElementById('aiSummary').textContent = a.ai_summary || 'No summary available.';
@@ -212,7 +235,7 @@ async function loadAnalytics(videoId) {
         return `<span class="emotion-tube-segment" style="width:${width}%;background:${color}" title="${c.timestamp}s: ${c.emotion}"></span>`;
       }).join('');
     } else {
-      tubeEl.innerHTML = '<p class="emotion-tube-empty">No emotion data yet</p>';
+      tubeEl.innerHTML = '';
     }
   } catch (e) { ph.style.display = 'block'; content.style.display = 'none'; ph.textContent = 'Failed to load analytics'; }
 }
@@ -257,18 +280,16 @@ let currentSessionId = null;
 let streamRef = null;
 let videoBlobUrl = null;
 
-// Smoothed: larger buffer, only use confident predictions
 window._recentEmotions = window._recentEmotions || [];
 function pushEmotion(e) {
-  if ((e.probability || 0) < 0.4) return; // Skip low-confidence detections
   window._recentEmotions.push(e);
   if (window._recentEmotions.length > 6) window._recentEmotions.shift();
   const scores = {};
   for (let i = 0; i < window._recentEmotions.length; i++) {
     const r = window._recentEmotions[i];
-    const weight = 1 + (i / window._recentEmotions.length);
-    const prob = r.probability || 0.5;
-    scores[r.emotion] = (scores[r.emotion] || 0) + prob * weight;
+    const p = r.probability || 0.5;
+    const weight = (1 + i / window._recentEmotions.length) * Math.pow(p, 1.5);
+    scores[r.emotion] = (scores[r.emotion] || 0) + weight;
   }
   const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   if (entries.length) {
@@ -329,8 +350,7 @@ function startCapture() {
   if (webcamVideo && streamRef) {
     try { webcamVideo.srcObject = streamRef; webcamVideo.play().catch(()=>{}); webcamPreview.style.display = 'block'; } catch(e){}
   }
-  // Less frequent capture to reduce incorrect detections
-  captureInterval = setInterval(captureFrame, 400);
+  captureInterval = setInterval(captureFrame, 150);
 }
 function stopCapture() { clearInterval(captureInterval); captureInterval = null; _hideWebcamPreview(); }
 
@@ -368,61 +388,28 @@ async function captureFrame() {
       fd.append('file', blob, 'frame.jpg');
       const resp = await fetch(API + '/inference/emotion', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
       const data = await resp.json();
-      // update badge (use aggregator for sensitivity + smoothing) with dynamic styling
-      if (data.face_detected) {
-        // Map emotions to emojis and theme colors
-        const emotionStyleMap = {
-          happy: { text: 'Happy 😄', bg: 'rgba(234, 179, 8, 0.15)', border: '#eab308' },
-          sad: { text: 'Sad 😢', bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6' },
-          angry: { text: 'Angry 😡', bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444' },
-          fear: { text: 'Fear 😨', bg: 'rgba(168, 85, 247, 0.15)', border: '#a855f7' },
-          disgust: { text: 'Disgust 🤢', bg: 'rgba(34, 197, 94, 0.15)', border: '#22c55e' },
-          surprise: { text: 'Surprise 😲', bg: 'rgba(249, 115, 22, 0.15)', border: '#f97316' },
-          neutral: { text: 'Neutral 😐', bg: 'var(--bg)', border: 'var(--border)' }
-        };
-
-        const emotionKey = data.emotion.toLowerCase();
-        const uiData = emotionStyleMap[emotionKey] || emotionStyleMap.neutral;
-        
-        // Update text and box colors
-        document.getElementById('currentEmotion').textContent = uiData.text;
-        const boxEl = document.getElementById('emotionDisplayBox');
-        if (boxEl) {
-          boxEl.style.backgroundColor = uiData.bg;
-          boxEl.style.borderColor = uiData.border;
-        }
-
-        // persist reading
-        try { pushEmotion({ emotion: data.emotion, probability: data.probability || 0.5 }); } catch (e) {}
-        // persist reading (still store raw model output)
-        api('/emotions/sessions/' + currentSessionId + '/readings', {
-          method: 'POST',
-          body: JSON.stringify({ readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }] })
-        }).catch(()=>{});
-      }
-      // Always update badge (backend always returns emotion via center-crop fallback)
       try { pushEmotion({ emotion: data.emotion, probability: data.probability || 0.5 }); } catch (e) {}
+      const emotionStyleMap = {
+        happy: { text: 'Happy 😄', bg: 'rgba(234, 179, 8, 0.15)', border: '#eab308' },
+        sad: { text: 'Sad 😢', bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6' },
+        angry: { text: 'Angry 😡', bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444' },
+        fear: { text: 'Fear 😨', bg: 'rgba(168, 85, 247, 0.15)', border: '#a855f7' },
+        disgust: { text: 'Disgust 🤢', bg: 'rgba(34, 197, 94, 0.15)', border: '#22c55e' },
+        surprise: { text: 'Surprise 😲', bg: 'rgba(249, 115, 22, 0.15)', border: '#f97316' },
+        neutral: { text: 'Neutral 😐', bg: 'var(--bg)', border: 'var(--border)' }
+      };
+      const uiData = emotionStyleMap[(data.emotion || '').toLowerCase()] || emotionStyleMap.neutral;
+      document.getElementById('currentEmotion').textContent = uiData.text;
+      const boxEl = document.getElementById('emotionDisplayBox');
+      if (boxEl) { boxEl.style.backgroundColor = uiData.bg; boxEl.style.borderColor = uiData.border; }
       api('/emotions/sessions/' + currentSessionId + '/readings', {
         method: 'POST',
         body: JSON.stringify({ readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }] })
       }).catch(()=>{});
-      // draw landmarks on overlay
       const overlay = document.getElementById('overlayCanvas');
-      if (overlay) {
-        overlay.width = overlay.clientWidth;
-        overlay.height = overlay.clientHeight;
+      if (overlay && overlay.getContext) {
         const octx = overlay.getContext('2d');
-        octx.clearRect(0,0,overlay.width, overlay.height);
-        if (data.landmarks && Array.isArray(data.landmarks) && data.landmarks.length) {
-          octx.fillStyle = 'rgba(0,255,128,0.95)';
-          const vw = overlay.width, vh = overlay.height;
-          // landmarks are normalized to image size used on server; map using capture canvas aspect ratio
-          for (const lm of data.landmarks) {
-            const x = lm.x * vw;
-            const y = lm.y * vh;
-            octx.beginPath(); octx.arc(x, y, 2.2, 0, Math.PI*2); octx.fill();
-          }
-        }
+        octx.clearRect(0, 0, overlay.width || 0, overlay.height || 0);
       }
     } catch (e) { /* ignore */ }
   }, 'image/jpeg');
@@ -462,8 +449,8 @@ document.getElementById('watchAnother').onclick = (e) => { e.preventDefault(); c
   const user = getUser();
   if (user && getToken()) {
     updateNav();
-    showView(user.role === 'director' ? 'dashboardView' : 'watchView');
-    if (user.role === 'director') loadVideos();
+    showView(String(user.role || '').toLowerCase() === 'director' ? 'dashboardView' : 'watchView');
+    if (String(user.role || '').toLowerCase() === 'director') loadVideos();
   } else {
     showView('loginView');
   }
