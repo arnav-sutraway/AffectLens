@@ -326,9 +326,30 @@ async function captureFrame() {
       fd.append('file', blob, 'frame.jpg');
       const resp = await fetch(API + '/inference/emotion', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
       const data = await resp.json();
-      // update badge
+      // update badge with dynamic styling
       if (data.face_detected) {
-        document.getElementById('currentEmotion').textContent = data.emotion;
+        // Map emotions to emojis and theme colors
+        const emotionStyleMap = {
+          happy: { text: 'Happy 😄', bg: 'rgba(234, 179, 8, 0.15)', border: '#eab308' },
+          sad: { text: 'Sad 😢', bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6' },
+          angry: { text: 'Angry 😡', bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444' },
+          fear: { text: 'Fear 😨', bg: 'rgba(168, 85, 247, 0.15)', border: '#a855f7' },
+          disgust: { text: 'Disgust 🤢', bg: 'rgba(34, 197, 94, 0.15)', border: '#22c55e' },
+          surprise: { text: 'Surprise 😲', bg: 'rgba(249, 115, 22, 0.15)', border: '#f97316' },
+          neutral: { text: 'Neutral 😐', bg: 'var(--bg)', border: 'var(--border)' }
+        };
+
+        const emotionKey = data.emotion.toLowerCase();
+        const uiData = emotionStyleMap[emotionKey] || emotionStyleMap.neutral;
+        
+        // Update text and box colors
+        document.getElementById('currentEmotion').textContent = uiData.text;
+        const boxEl = document.getElementById('emotionDisplayBox');
+        if (boxEl) {
+          boxEl.style.backgroundColor = uiData.bg;
+          boxEl.style.borderColor = uiData.border;
+        }
+
         // persist reading
         api('/emotions/sessions/' + currentSessionId + '/readings', {
           method: 'POST',

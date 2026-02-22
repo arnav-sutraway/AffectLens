@@ -138,14 +138,75 @@ h3 { font-size: 0.875rem; color: var(--text-muted); margin: 0 0 0.5rem 0; }
 
 .video-container { position: relative; background: black; border-radius: 0.5rem; overflow: hidden; max-width: 48rem; }
 .video-container video { width: 100%; display: block; }
-.emotion-badge { position: absolute; bottom: 0.5rem; left: 0.5rem; padding: 0.25rem 0.5rem; background: rgba(0,0,0,0.6); border-radius: 4px; font-size: 0.875rem; }
-.emotion-badge span { color: var(--accent); font-weight: 600; }
 .hint { font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem; }
 
-/* Small webcam preview with overlay */
-.webcam-preview { position: absolute; top: 0.5rem; right: 0.5rem; width: 180px; height: 135px; border-radius: 8px; overflow: hidden; background: #000; box-shadow: 0 6px 20px rgba(0,0,0,0.6); }
-.webcam-preview video, .webcam-preview canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-.webcam-preview canvas { pointer-events: none; }
+/* --- NEW WATCH DASHBOARD LAYOUT --- */
+.watch-layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr; /* Video takes 2/3, Analytics 1/3 */
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .watch-layout { grid-template-columns: 1fr; }
+}
+
+.live-analytics-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.emotion-display {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.3s ease; /* Smooth transition for color changes */
+}
+
+.emotion-label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.emotion-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-top: 0.5rem;
+  text-transform: uppercase;
+  color: white;
+}
+
+/* Updated Webcam Box inside panel */
+.webcam-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+.webcam-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: black;
+  border: 1px solid var(--border);
+}
+.webcam-box video, .webcam-box canvas {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+}
+.webcam-box canvas { pointer-events: none; }
 
 #intensity { width: 100%; margin-bottom: 1rem; }
 
@@ -183,7 +244,8 @@ h3 { font-size: 0.875rem; color: var(--text-muted); margin: 0 0 0.5rem 0; }
 }
 
 #statusText {
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--text-muted, #6b7280);
   margin-bottom: 6px;
 }
+

@@ -111,16 +111,30 @@
     <!-- Viewer Watching (video player) -->
     <section id="watchingView" class="view" style="display:none">
       <div id="statusText"></div>
-      <div class="video-container">
-        <video id="mainVideo" controls></video>
-        <div class="emotion-badge" id="emotionBadge">Detected: <span id="currentEmotion">neutral</span></div>
-        <!-- Webcam preview + overlay for viewer to see ML landmarks live -->
-        <div class="webcam-preview" id="webcamPreview" style="display:none">
-          <video id="webcamVideo" autoplay muted playsinline></video>
-          <canvas id="overlayCanvas"></canvas>
+      
+      <div class="watch-layout">
+        <div class="video-container">
+          <video id="mainVideo" controls></video>
+        </div>
+
+        <div class="live-analytics-panel">
+          <h3>Live Reaction Analysis</h3>
+          <p class="hint" style="margin-top: 0;">Capturing reactions every 500ms</p>
+          
+          <div class="emotion-display" id="emotionDisplayBox">
+            <span class="emotion-label">Current Emotion</span>
+            <div class="emotion-value" id="currentEmotion">Neutral 😐</div>
+          </div>
+          
+          <div id="webcamPreview" style="display:none">
+            <p class="webcam-label">Audience Camera Feed</p>
+            <div class="webcam-box">
+              <video id="webcamVideo" autoplay muted playsinline></video>
+              <canvas id="overlayCanvas"></canvas>
+            </div>
+          </div>
         </div>
       </div>
-      <p class="hint">Watch the video. Your reactions are captured every 500ms (with consent).</p>
     </section>
 
     <!-- Survey View -->

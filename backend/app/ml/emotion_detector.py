@@ -10,7 +10,6 @@ EMOTION_LABELS = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutr
 _face_detector = None
 _emotion_model = None
 
-
 def _get_face_detector():
     """Return a MediaPipe FaceMesh detector (for landmarks) if available."""
     global _face_detector
