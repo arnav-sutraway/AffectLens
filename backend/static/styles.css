@@ -21,7 +21,9 @@ body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); col
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
-.logo { font-weight: 600; font-size: 1.125rem; color: white; text-decoration: none; }
+.logo { font-weight: 600; font-size: 1.5rem; color: white; text-decoration: none; display: flex; align-items: center; gap: 0; }
+.logo span { margin-left: -50px; }
+.logo-img { height: 5.6rem; width: auto; display: block; object-fit: contain; margin-top: 15px; }
 .nav-right { display: flex; align-items: center; gap: 1rem; font-size: 0.875rem; color: var(--text-muted); }
 .nav-right .role { padding: 0.125rem 0.5rem; border-radius: 4px; background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
 .nav-right a { color: var(--text-muted); text-decoration: none; }
