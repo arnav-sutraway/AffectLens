@@ -14,7 +14,7 @@ async function api(path, opts = {}) {
   const token = getToken();
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const res = await fetch(API + path, { ...opts, headers });
-  if (res.status === 401) { clearAuth(); window.location.reload(); return; }
+  if (res.status === 401 && path !== '/auth/login') { clearAuth(); window.location.reload(); return; }
   const text = await res.text();
   let data;
   try { data = text ? JSON.parse(text) : null; } catch { data = null; }
@@ -66,8 +66,12 @@ document.getElementById('loginForm').onsubmit = async (e) => {
     showView(data.role === 'director' ? 'dashboardView' : 'watchView');
     if (data.role === 'director') loadVideos();
   } catch (ex) {
-    const d = ex.data?.detail ?? ex.data;
-    err.textContent = (Array.isArray(d) ? d.map(x => x.msg).join(', ') : (typeof d === 'string' ? d : ex.data?.detail || ex.message)) || 'Login failed';
+    if (ex.status === 401 || (ex.data?.detail && String(ex.data.detail).toLowerCase().includes('invalid'))) {
+      err.textContent = 'Your entered details were invalid. Please try again.';
+    } else {
+      const d = ex.data?.detail ?? ex.data;
+      err.textContent = (Array.isArray(d) ? d.map(x => x.msg).join(', ') : (typeof d === 'string' ? d : ex.data?.detail || ex.message)) || 'Login failed';
+    }
   }
 };
 
@@ -174,7 +178,7 @@ async function loadAnalytics(videoId) {
         return `<span class="emotion-tube-segment" style="width:${width}%;background:${color}" title="${c.timestamp}s: ${c.emotion}"></span>`;
       }).join('');
     } else {
-      tubeEl.innerHTML = '<p class="emotion-tube-empty">No emotion data yet</p>';
+      tubeEl.innerHTML = '';
     }
   } catch (e) { ph.style.display = 'block'; content.style.display = 'none'; ph.textContent = 'Failed to load analytics'; }
 }
