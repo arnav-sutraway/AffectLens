@@ -349,36 +349,3 @@ h3 { font-size: 0.875rem; color: var(--text-muted); margin: 0 0 0.5rem 0; }
   margin-bottom: 6px;
 }
 
-<<<<<<< HEAD
-=======
-body::before {
-  content: "";
-  position: fixed;
-  left: -50%;
-  width: 200%;
-  bottom: 0;
-  height: 22px;
-  z-index: 9999;
-  pointer-events: none;
-
-  background: linear-gradient(
-    90deg,
-    #0f18ca,
-    #4d04c4,
-    #2f0278,
-    #240284,
-    #0f18ca
-  );
-
-  background-size: 200% 100%;
-  filter: blur(24px);
-  opacity: 0.9;
-
-  animation: smoothFlow 13s linear infinite;
-}
-
-@keyframes smoothFlow {
-  from { background-position: 0% 50%; }
-  to   { background-position: 200% 50%; }
-}
->>>>>>> main
