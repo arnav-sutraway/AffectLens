@@ -95,21 +95,20 @@
       </div>
     </section>
 
+    <div class="global-gradient-bar"></div>
+
     <!-- Viewer Watch -->
     <section id="watchView" class="view" style="display:none">
       <h1>Watch & Respond</h1>
-      <p class="subtitle">Enter the video ID assigned by your director</p>
-      <form id="watchForm" class="card">
-        <div>
-          <label for="videoId">Video ID</label>
-          <input type="number" id="videoId" placeholder="e.g. 1" min="1" required>
-        </div>
-        <button type="submit">Start Watching</button>
-      </form>
+      <p class="subtitle">Choose a video to watch</p>
+      <div class="video-list">
+        <div id="availableVideosList"></div>
+      </div>
     </section>
 
     <!-- Viewer Watching (video player) -->
     <section id="watchingView" class="view" style="display:none">
+      <div id="statusText"></div>
       <div class="video-container">
         <video id="mainVideo" controls></video>
         <div class="emotion-badge" id="emotionBadge">Detected: <span id="currentEmotion">neutral</span></div>

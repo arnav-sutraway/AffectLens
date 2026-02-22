@@ -1,5 +1,41 @@
 const API = ''; // Same origin - backend serves this
 
+// ===== UI SESSION STATE =====
+const UIState = {
+  IDLE: 'idle',
+  LOADING_VIDEO: 'loading_video',
+  WAITING_CONSENT: 'waiting_consent',
+  DETECTING: 'detecting',
+  PAUSED: 'paused',
+  FINISHED: 'finished',
+  ERROR: 'error'
+};
+
+let uiState = UIState.IDLE;
+
+function setUIState(state) {
+  uiState = state;
+  document.body.dataset.state = state;
+  updateStatusText();
+}
+
+function updateStatusText() {
+  const el = document.getElementById('statusText');
+  if (!el) return;
+
+  const messages = {
+    idle: '',
+    loading_video: 'Loading video…',
+    waiting_consent: 'Waiting for camera access…',
+    detecting: 'Detecting facial expressions',
+    paused: 'Detection paused',
+    finished: 'Session complete',
+    error: 'Something went wrong'
+  };
+
+  el.textContent = messages[uiState] || '';
+}
+
 function getToken() { return localStorage.getItem('token'); }
 function setToken(t) { localStorage.setItem('token', t); }
 function setUser(u) { localStorage.setItem('user', JSON.stringify(u)); }
@@ -26,6 +62,8 @@ function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
+  // Load available videos when switching to watchView
+  if (id === 'watchView') loadAvailableVideos();
 }
 
 function updateNav() {
@@ -199,12 +237,25 @@ document.getElementById('videoFile').onchange = async (e) => {
 };
 
 // Viewer
-document.getElementById('watchForm').onsubmit = (e) => {
-  e.preventDefault();
-  const id = parseInt(document.getElementById('videoId').value, 10);
-  if (id && id > 0) startWatching(id);
-  else alert('Please enter a valid positive Video ID');
-};
+async function loadAvailableVideos() {
+  try {
+    const videos = await api('/videos/available/list');
+    const container = document.getElementById('availableVideosList');
+    if (!videos || videos.length === 0) {
+      container.innerHTML = '<p>No videos available at this time.</p>';
+      return;
+    }
+    container.innerHTML = videos.map(v => `
+      <div class="video-item card" style="cursor: pointer; margin-bottom: 1rem;" onclick="startWatching(${v.id})">
+        <h3>${v.title || 'Untitled'}</h3>
+        <p>ID: ${v.id} • Uploaded: ${new Date(v.upload_time).toLocaleDateString()}</p>
+      </div>
+    `).join('');
+  } catch (ex) {
+    console.error('Failed to load videos:', ex);
+    document.getElementById('availableVideosList').innerHTML = '<p>Failed to load videos.</p>';
+  }
+}
 
 let currentSessionId = null;
 let streamRef = null;
@@ -212,11 +263,13 @@ let videoBlobUrl = null;
 
 async function startWatching(videoId) {
   try {
+    setUIState(UIState.LOADING_VIDEO);
     const sess = await api('/sessions', { method: 'POST', body: JSON.stringify({ video_id: videoId }) });
     currentSessionId = sess.id;
     const res = await fetch(API + '/videos/' + videoId + '/stream', { headers: { Authorization: 'Bearer ' + getToken() } });
     if (!res.ok) throw new Error('Could not load video');
     videoBlobUrl = URL.createObjectURL(await res.blob());
+    setUIState(UIState.WAITING_CONSENT);
     const consent = confirm('To capture your emotional reactions, we need webcam access. We only store emotion data—no face images. Click OK to enable, or Cancel to skip.');
     if (consent) {
       try { streamRef = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } }); } catch (e) { console.warn('Webcam denied'); }
@@ -224,15 +277,30 @@ async function startWatching(videoId) {
     showView('watchingView');
     const video = document.getElementById('mainVideo');
     video.src = videoBlobUrl;
-    video.onended = () => { finishWatching(); };
-    video.onplay = () => startCapture();
-    video.onpause = () => stopCapture();
-  } catch (ex) { alert((ex.data?.detail || ex.message) || 'Failed to start'); }
+    video.onended = () => {
+      setUIState(UIState.FINISHED);
+      finishWatching();
+    };
+    video.onplay = () => {
+      setUIState(UIState.DETECTING);
+      startCapture();
+    };
+    video.onpause = () => {
+      setUIState(UIState.PAUSED);
+      stopCapture();
+    };
+  } catch (ex) {
+  setUIState(UIState.ERROR);
+  alert((ex.data?.detail || ex.message) || 'Failed to start');
+  }
 }
 
 let captureInterval = null;
 function startCapture() {
-  if (!streamRef || !currentSessionId) return;
+  if (!streamRef || !currentSessionId) {
+    setUIState(UIState.ERROR);
+    return;
+  }
   // Attach stream to visible webcam element if present
   const webcamPreview = document.getElementById('webcamPreview');
   const webcamVideo = document.getElementById('webcamVideo');
@@ -309,6 +377,7 @@ async function captureFrame() {
 }
 
 async function finishWatching() {
+  setUIState(UIState.FINISHED);
   stopCapture();
   if (streamRef) { streamRef.getTracks().forEach(t => t.stop()); streamRef = null; }
   _hideWebcamPreview();
