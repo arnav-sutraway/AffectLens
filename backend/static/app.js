@@ -283,14 +283,17 @@ let currentSessionId = null;
 let streamRef = null;
 let videoBlobUrl = null;
 
-// Short rolling aggregator to increase sensitivity while smoothing noise.
+// Balanced: all emotions weighted equally, no bias toward any label
 window._recentEmotions = window._recentEmotions || [];
 function pushEmotion(e) {
   window._recentEmotions.push(e);
-  if (window._recentEmotions.length > 6) window._recentEmotions.shift();
+  if (window._recentEmotions.length > 4) window._recentEmotions.shift();
   const scores = {};
-  for (const r of window._recentEmotions) {
-    scores[r.emotion] = (scores[r.emotion] || 0) + (r.probability || 0.2);
+  for (let i = 0; i < window._recentEmotions.length; i++) {
+    const r = window._recentEmotions[i];
+    const weight = 1 + (i / window._recentEmotions.length);
+    const prob = r.probability || 0.5;
+    scores[r.emotion] = (scores[r.emotion] || 0) + prob * weight;
   }
   const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   if (entries.length) {
@@ -351,8 +354,8 @@ function startCapture() {
   if (webcamVideo && streamRef) {
     try { webcamVideo.srcObject = streamRef; webcamVideo.play().catch(()=>{}); webcamPreview.style.display = 'block'; } catch(e){}
   }
-  // Increase capture frequency for more responsive detection
-  captureInterval = setInterval(captureFrame, 250);
+  // Max capture frequency for max sensitivity
+  captureInterval = setInterval(captureFrame, 100);
 }
 function stopCapture() { clearInterval(captureInterval); captureInterval = null; _hideWebcamPreview(); }
 
@@ -390,15 +393,12 @@ async function captureFrame() {
       fd.append('file', blob, 'frame.jpg');
       const resp = await fetch(API + '/inference/emotion', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
       const data = await resp.json();
-      // update badge (use aggregator for sensitivity + smoothing)
-      if (data.face_detected) {
-        try { pushEmotion({ emotion: data.emotion, probability: data.probability || 0.5 }); } catch (e) {}
-        // persist reading (still store raw model output)
-        api('/emotions/sessions/' + currentSessionId + '/readings', {
-          method: 'POST',
-          body: JSON.stringify({ readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }] })
-        }).catch(()=>{});
-      }
+      // Always update badge (backend always returns emotion via center-crop fallback)
+      try { pushEmotion({ emotion: data.emotion, probability: data.probability || 0.5 }); } catch (e) {}
+      api('/emotions/sessions/' + currentSessionId + '/readings', {
+        method: 'POST',
+        body: JSON.stringify({ readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }] })
+      }).catch(()=>{});
       // draw landmarks on overlay
       const overlay = document.getElementById('overlayCanvas');
       if (overlay) {
@@ -427,8 +427,8 @@ async function finishWatching() {
   if (streamRef) { streamRef.getTracks().forEach(t => t.stop()); streamRef = null; }
   _hideWebcamPreview();
   if (videoBlobUrl) { URL.revokeObjectURL(videoBlobUrl); videoBlobUrl = null; }
-  if (currentSessionId) await api('/sessions/' + currentSessionId + '/complete', { method: 'POST' });
   showView('surveyView');
+  if (currentSessionId) api('/sessions/' + currentSessionId + '/complete', { method: 'POST' }).catch(() => {});
 }
 
 document.getElementById('surveyForm').onsubmit = async (e) => {
