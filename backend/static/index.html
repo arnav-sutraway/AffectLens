@@ -140,7 +140,12 @@
         </div>
         <div>
           <label>Intensity (1–10) <span id="intensityVal">5</span></label>
-          <input type="range" id="intensity" min="1" max="10" value="5">
+          <div class="intensity-slider-container">
+            <div class="intensity-track">
+              <div class="intensity-fill" id="intensityFill"></div>
+            </div>
+            <input type="range" id="intensity" min="1" max="10" value="5" class="intensity-input">
+          </div>
         </div>
         <div>
           <label for="feedbackText">Optional feedback</label>
@@ -157,6 +162,15 @@
       <a href="#" class="btn" id="watchAnother">Watch another</a>
     </section>
   </main>
+
+  <!-- Stat explanation popup -->
+  <div id="statPopup" class="stat-popup-overlay" style="display:none">
+    <div class="stat-popup">
+      <h3 id="statPopupTitle"></h3>
+      <p id="statPopupText"></p>
+      <button type="button" class="stat-popup-close">Close</button>
+    </div>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

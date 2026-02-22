@@ -66,6 +66,15 @@ function showView(id) {
   if (id === 'watchView') loadAvailableVideos();
 }
 
+function showStatPopup(title, text) {
+  document.getElementById('statPopupTitle').textContent = title;
+  document.getElementById('statPopupText').textContent = text;
+  document.getElementById('statPopup').style.display = 'flex';
+}
+function closeStatPopup() {
+  document.getElementById('statPopup').style.display = 'none';
+}
+
 function updateNav() {
   const user = getUser();
   const el = document.getElementById('navUser');
@@ -85,6 +94,8 @@ function updateNav() {
 // Login
 document.getElementById('showRegister').onclick = (e) => { e.preventDefault(); showView('registerView'); document.getElementById('registerError').textContent = ''; };
 document.getElementById('showLogin').onclick = (e) => { e.preventDefault(); showView('loginView'); document.getElementById('loginError').textContent = ''; };
+document.getElementById('statPopup').onclick = (e) => { if (e.target.id === 'statPopup') closeStatPopup(); };
+document.querySelector('.stat-popup-close').onclick = closeStatPopup;
 
 document.getElementById('loginForm').onsubmit = async (e) => {
   e.preventDefault();
@@ -185,16 +196,27 @@ async function loadAnalytics(videoId) {
     const a = await api('/analytics/video/' + videoId);
     ph.style.display = 'none';
     content.style.display = 'block';
+    const statExplanations = {
+      alignment: { title: 'Alignment', text: 'Measures how well the audience\'s emotional reactions (detected by our model) match your intended emotional beats. A higher score indicates viewers felt what you intended at key moments in the video.' },
+      volatility: { title: 'Volatility', text: 'Shows how frequently emotions change throughout the video. Higher volatility means the audience experienced more emotional shifts; lower volatility suggests more consistent emotional engagement.' },
+      modelVsSurvey: { title: 'Model vs Survey', text: 'Compares our AI model\'s emotion predictions with what viewers reported in the post-viewing survey. This shows how well the automatic facial analysis aligns with viewers\' self-reported feelings.' }
+    };
     document.getElementById('statsRow').innerHTML = `
-      <div class="stat-box"><div class="label">Alignment</div><div class="value" style="color:var(--accent)">${a.alignment_score ?? 0}%</div></div>
-      <div class="stat-box"><div class="label">Volatility</div><div class="value" style="color:#f59e0b">${a.emotional_volatility ?? 0}%</div></div>
-      <div class="stat-box"><div class="label">Model vs Survey</div><div class="value" style="color:#22c55e">${a.model_vs_survey_alignment ?? '-'}%</div></div>
-      <div class="stat-box stat-box-download">
+      <div class="stat-box stat-box-clickable" data-stat="alignment"><div class="label">Alignment</div><div class="value" style="color:var(--accent)">${a.alignment_score ?? 0}%</div></div>
+      <div class="stat-box stat-box-clickable" data-stat="volatility"><div class="label">Volatility</div><div class="value" style="color:#f59e0b">${a.emotional_volatility ?? 0}%</div></div>
+      <div class="stat-box stat-box-clickable" data-stat="modelVsSurvey"><div class="label">Model vs Survey</div><div class="value" style="color:#22c55e">${a.model_vs_survey_alignment ?? '-'}%</div></div>
+      <div class="stat-box stat-box-download" id="downloadReportBlock">
         <div class="label">Download Report</div>
-        <div class="download-symbol" id="exportPdf" aria-label="Download PDF">⬇</div>
+        <div class="download-symbol" aria-label="Download PDF">⬇</div>
       </div>
     `;
-    document.getElementById('exportPdf').onclick = async (e) => {
+    document.querySelectorAll('.stat-box-clickable').forEach(box => {
+      box.onclick = () => {
+        const s = statExplanations[box.dataset.stat];
+        if (s) { showStatPopup(s.title, s.text); }
+      };
+    });
+    document.getElementById('downloadReportBlock').onclick = async (e) => {
       e.preventDefault();
       const res = await fetch(API + '/analytics/video/' + videoId + '/export', { headers: { Authorization: 'Bearer ' + getToken() } });
       const blob = await res.blob();
@@ -402,7 +424,18 @@ document.getElementById('surveyForm').onsubmit = async (e) => {
   } catch (ex) { alert((ex.data?.detail || ex.message) || 'Submit failed'); }
 };
 
-document.getElementById('intensity').oninput = () => { document.getElementById('intensityVal').textContent = document.getElementById('intensity').value; };
+function updateIntensityFill() {
+  const el = document.getElementById('intensity');
+  const fill = document.getElementById('intensityFill');
+  if (!el || !fill) return;
+  const v = parseInt(el.value, 10);
+  document.getElementById('intensityVal').textContent = v;
+  const pct = v <= 1 ? 0 : Math.min(100, ((v - 1) / 9) * 100);
+  fill.style.width = pct + '%';
+}
+document.getElementById('intensity')?.addEventListener('input', updateIntensityFill);
+document.getElementById('intensity')?.addEventListener('change', updateIntensityFill);
+updateIntensityFill();
 document.getElementById('watchAnother').onclick = (e) => { e.preventDefault(); currentSessionId = null; showView('watchView'); };
 
 // Init
