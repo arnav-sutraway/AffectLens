@@ -188,12 +188,15 @@ def predict_emotion(face_crop: np.ndarray) -> Tuple[str, float, Optional[float],
         top = items[0]
         label = top.get("label", "neutral").lower()
         prob = float(top.get("score", 0.0))
-        # Balanced: trust model's top prediction. Only override on near-tie (within 0.08)
-        if len(items) > 1 and prob < 0.5:
+        # Filter low-confidence: default to neutral to reduce incorrect detections
+        if prob < 0.4:
+            label, prob = "neutral", 0.5
+        elif len(items) > 1 and prob < 0.55:
+            # Only override on genuine near-tie
             second = items[1]
             sec_label = second.get("label", "").lower()
             sec_prob = float(second.get("score", 0.0))
-            if sec_label in EMOTION_LABELS and sec_prob >= prob - 0.08:
+            if sec_label in EMOTION_LABELS and sec_prob >= prob - 0.05:
                 label, prob = sec_label, sec_prob
         if label not in EMOTION_LABELS:
             label = "neutral"

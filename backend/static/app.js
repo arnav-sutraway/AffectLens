@@ -283,11 +283,12 @@ let currentSessionId = null;
 let streamRef = null;
 let videoBlobUrl = null;
 
-// Balanced: all emotions weighted equally, no bias toward any label
+// Smoothed: larger buffer, only use confident predictions
 window._recentEmotions = window._recentEmotions || [];
 function pushEmotion(e) {
+  if ((e.probability || 0) < 0.4) return; // Skip low-confidence detections
   window._recentEmotions.push(e);
-  if (window._recentEmotions.length > 4) window._recentEmotions.shift();
+  if (window._recentEmotions.length > 6) window._recentEmotions.shift();
   const scores = {};
   for (let i = 0; i < window._recentEmotions.length; i++) {
     const r = window._recentEmotions[i];
@@ -354,8 +355,8 @@ function startCapture() {
   if (webcamVideo && streamRef) {
     try { webcamVideo.srcObject = streamRef; webcamVideo.play().catch(()=>{}); webcamPreview.style.display = 'block'; } catch(e){}
   }
-  // Max capture frequency for max sensitivity
-  captureInterval = setInterval(captureFrame, 100);
+  // Less frequent capture to reduce incorrect detections
+  captureInterval = setInterval(captureFrame, 400);
 }
 function stopCapture() { clearInterval(captureInterval); captureInterval = null; _hideWebcamPreview(); }
 
