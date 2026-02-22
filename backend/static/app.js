@@ -62,6 +62,8 @@ function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
+  // Load available videos when switching to watchView
+  if (id === 'watchView') loadAvailableVideos();
 }
 
 function updateNav() {
@@ -231,16 +233,48 @@ document.getElementById('videoFile').onchange = async (e) => {
 };
 
 // Viewer
-document.getElementById('watchForm').onsubmit = (e) => {
-  e.preventDefault();
-  const id = parseInt(document.getElementById('videoId').value, 10);
-  if (id && id > 0) startWatching(id);
-  else alert('Please enter a valid positive Video ID');
-};
+async function loadAvailableVideos() {
+  try {
+    const videos = await api('/videos/available/list');
+    const container = document.getElementById('availableVideosList');
+    if (!videos || videos.length === 0) {
+      container.innerHTML = '<p>No videos available at this time.</p>';
+      return;
+    }
+    container.innerHTML = videos.map(v => `
+      <div class="video-item card" style="cursor: pointer; margin-bottom: 1rem;" onclick="startWatching(${v.id})">
+        <h3>${v.title || 'Untitled'}</h3>
+        <p>ID: ${v.id} • Uploaded: ${new Date(v.upload_time).toLocaleDateString()}</p>
+      </div>
+    `).join('');
+  } catch (ex) {
+    console.error('Failed to load videos:', ex);
+    document.getElementById('availableVideosList').innerHTML = '<p>Failed to load videos.</p>';
+  }
+}
 
 let currentSessionId = null;
 let streamRef = null;
 let videoBlobUrl = null;
+
+// Short rolling aggregator to increase sensitivity while smoothing noise.
+window._recentEmotions = window._recentEmotions || [];
+function pushEmotion(e) {
+  window._recentEmotions.push(e);
+  if (window._recentEmotions.length > 6) window._recentEmotions.shift();
+  const scores = {};
+  for (const r of window._recentEmotions) {
+    scores[r.emotion] = (scores[r.emotion] || 0) + (r.probability || 0.2);
+  }
+  const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  if (entries.length) {
+    const chosen = entries[0][0];
+    const el = document.getElementById('currentEmotion');
+    if (el) el.textContent = chosen;
+    return chosen;
+  }
+  return null;
+}
 
 async function startWatching(videoId) {
   try {
@@ -253,7 +287,10 @@ async function startWatching(videoId) {
     setUIState(UIState.WAITING_CONSENT);
     const consent = confirm('To capture your emotional reactions, we need webcam access. We only store emotion data—no face images. Click OK to enable, or Cancel to skip.');
     if (consent) {
-      try { streamRef = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } }); } catch (e) { console.warn('Webcam denied'); }
+      try {
+        // Ask for a higher resolution if available (browser will downgrade if unsupported)
+        streamRef = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } });
+      } catch (e) { console.warn('Webcam denied or higher res not available'); }
     }
     showView('watchingView');
     const video = document.getElementById('mainVideo');
@@ -288,7 +325,8 @@ function startCapture() {
   if (webcamVideo && streamRef) {
     try { webcamVideo.srcObject = streamRef; webcamVideo.play().catch(()=>{}); webcamPreview.style.display = 'block'; } catch(e){}
   }
-  captureInterval = setInterval(captureFrame, 500);
+  // Increase capture frequency for more responsive detection
+  captureInterval = setInterval(captureFrame, 250);
 }
 function stopCapture() { clearInterval(captureInterval); captureInterval = null; _hideWebcamPreview(); }
 
@@ -326,7 +364,7 @@ async function captureFrame() {
       fd.append('file', blob, 'frame.jpg');
       const resp = await fetch(API + '/inference/emotion', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
       const data = await resp.json();
-      // update badge with dynamic styling
+      // update badge (use aggregator for sensitivity + smoothing) with dynamic styling
       if (data.face_detected) {
         // Map emotions to emojis and theme colors
         const emotionStyleMap = {
@@ -351,6 +389,8 @@ async function captureFrame() {
         }
 
         // persist reading
+        try { pushEmotion({ emotion: data.emotion, probability: data.probability || 0.5 }); } catch (e) {}
+        // persist reading (still store raw model output)
         api('/emotions/sessions/' + currentSessionId + '/readings', {
           method: 'POST',
           body: JSON.stringify({ readings: [{ timestamp: ts, emotion_label: data.emotion, probability: data.probability, valence: data.valence, arousal: data.arousal }] })

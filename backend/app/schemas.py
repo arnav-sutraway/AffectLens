@@ -66,7 +66,7 @@ class SessionResponse(BaseModel):
     id: int
     video_id: int
     viewer_id: int
-    started_at: datetime
+    started_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
