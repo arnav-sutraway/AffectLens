@@ -8,8 +8,8 @@ from app.database import Base
 
 
 class UserRole(str, enum.Enum):
-    director = "director"
-    viewer = "viewer"
+    director = "Director"
+    viewer = "Viewer"
 
 
 class User(Base):
