@@ -18,4 +18,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+backend/affectlens.wdb
+
 backend/affectlens.db
