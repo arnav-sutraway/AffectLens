@@ -441,7 +441,18 @@ document.getElementById('surveyForm').onsubmit = async (e) => {
   } catch (ex) { alert((ex.data?.detail || ex.message) || 'Submit failed'); }
 };
 
-document.getElementById('intensity').oninput = () => { document.getElementById('intensityVal').textContent = document.getElementById('intensity').value; };
+function updateIntensityFill() {
+  const el = document.getElementById('intensity');
+  const fill = document.getElementById('intensityFill');
+  if (!el || !fill) return;
+  const v = parseInt(el.value, 10);
+  document.getElementById('intensityVal').textContent = v;
+  const pct = v <= 1 ? 0 : Math.min(100, ((v - 1) / 9) * 100);
+  fill.style.width = pct + '%';
+}
+document.getElementById('intensity').oninput = updateIntensityFill;
+document.getElementById('intensity').onchange = updateIntensityFill;
+updateIntensityFill();
 document.getElementById('watchAnother').onclick = (e) => { e.preventDefault(); currentSessionId = null; showView('watchView'); };
 
 // Init
